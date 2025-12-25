@@ -1,1 +1,7 @@
 project_id = "mjapbezvkiqvxbjartmo"
+
+[functions.evolution-api]
+verify_jwt = false
+
+[functions.evolution-webhook]
+verify_jwt = false

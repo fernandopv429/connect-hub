@@ -8,7 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Send, Phone, Clock, Loader2, Check, CheckCheck } from 'lucide-react';
+import { useEvolutionApi } from '@/hooks/useEvolutionApi';
+import { ArrowLeft, Send, Phone, Clock, Loader2, CheckCheck, XCircle, CheckCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -24,6 +25,13 @@ interface Conversation {
   phone: string;
   status: string;
   created_at: string;
+  instance_id: string | null;
+}
+
+interface WhatsAppInstance {
+  id: string;
+  instance_name: string;
+  status: string;
 }
 
 export default function Chat() {
@@ -31,12 +39,15 @@ export default function Chat() {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const { toast } = useToast();
+  const evolution = useEvolutionApi();
   
   const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [instance, setInstance] = useState<WhatsAppInstance | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [closingConversation, setClosingConversation] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -60,6 +71,19 @@ export default function Chat() {
         return;
       }
       setConversation(data);
+
+      // Fetch associated instance
+      if (data.instance_id) {
+        const { data: instanceData } = await supabase
+          .from('whatsapp_instances')
+          .select('*')
+          .eq('id', data.instance_id)
+          .maybeSingle();
+        
+        if (instanceData) {
+          setInstance(instanceData);
+        }
+      }
     } catch (error) {
       console.error('Error fetching conversation:', error);
       navigate('/conversations');
@@ -121,27 +145,89 @@ export default function Chat() {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !conversationId) return;
+    if (!newMessage.trim() || !conversationId || !conversation) return;
 
     setSending(true);
     try {
-      const { error } = await supabase.from('messages').insert({
-        conversation_id: conversationId,
-        from_me: true,
-        body: newMessage.trim(),
-      });
+      // If we have an instance connected, send via Evolution API
+      if (instance && instance.status === 'connected') {
+        const result = await evolution.sendMessage(
+          instance.instance_name,
+          conversation.phone,
+          newMessage.trim(),
+          conversationId
+        );
 
-      if (error) throw error;
-      setNewMessage('');
+        if (!result) {
+          throw new Error(evolution.error || 'Erro ao enviar mensagem');
+        }
+        
+        setNewMessage('');
+      } else {
+        // Fallback: just save to database (for testing or when instance is disconnected)
+        const { error } = await supabase.from('messages').insert({
+          conversation_id: conversationId,
+          from_me: true,
+          body: newMessage.trim(),
+        });
+
+        if (error) throw error;
+        setNewMessage('');
+        
+        if (!instance) {
+          toast({
+            title: 'Aviso',
+            description: 'Mensagem salva, mas não enviada (nenhuma instância associada).',
+          });
+        } else {
+          toast({
+            title: 'Aviso', 
+            description: 'Mensagem salva, mas não enviada (instância desconectada).',
+          });
+        }
+      }
     } catch (error) {
       console.error('Error sending message:', error);
       toast({
         title: 'Erro',
-        description: 'Não foi possível enviar a mensagem.',
+        description: error instanceof Error ? error.message : 'Não foi possível enviar a mensagem.',
         variant: 'destructive',
       });
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleToggleConversationStatus = async () => {
+    if (!conversation) return;
+    
+    setClosingConversation(true);
+    const newStatus = conversation.status === 'open' ? 'closed' : 'open';
+    
+    try {
+      const { error } = await supabase
+        .from('conversations')
+        .update({ status: newStatus })
+        .eq('id', conversation.id);
+
+      if (error) throw error;
+      
+      setConversation({ ...conversation, status: newStatus });
+      toast({
+        title: newStatus === 'closed' ? 'Conversa fechada' : 'Conversa reaberta',
+        description: newStatus === 'closed' 
+          ? 'A conversa foi marcada como fechada.'
+          : 'A conversa foi reaberta.',
+      });
+    } catch (error) {
+      console.error('Error updating conversation:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível atualizar a conversa.',
+        variant: 'destructive',
+      });
+    } finally {
+      setClosingConversation(false);
     }
   };
 
@@ -196,13 +282,40 @@ export default function Chat() {
                   </Badge>
                 )}
               </div>
-              {conversation && (
-                <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Clock className="h-3 w-3" />
-                  Iniciada em {format(new Date(conversation.created_at), "d/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-                </p>
-              )}
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                {conversation && (
+                  <span className="flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    Iniciada em {format(new Date(conversation.created_at), "d/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                  </span>
+                )}
+                {instance && (
+                  <span className="flex items-center gap-1">
+                    •
+                    <span className={instance.status === 'connected' ? 'text-success' : 'text-muted-foreground'}>
+                      {instance.instance_name}
+                    </span>
+                  </span>
+                )}
+              </div>
             </div>
+            {conversation && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleToggleConversationStatus}
+                disabled={closingConversation}
+              >
+                {closingConversation ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : conversation.status === 'open' ? (
+                  <XCircle className="mr-2 h-4 w-4" />
+                ) : (
+                  <CheckCircle className="mr-2 h-4 w-4" />
+                )}
+                {conversation.status === 'open' ? 'Fechar' : 'Reabrir'}
+              </Button>
+            )}
           </div>
         </Card>
 
