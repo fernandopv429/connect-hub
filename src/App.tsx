@@ -10,6 +10,7 @@ import Instances from "./pages/Instances";
 import Conversations from "./pages/Conversations";
 import Chat from "./pages/Chat";
 import Users from "./pages/Users";
+import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -29,6 +30,7 @@ const App = () => (
             <Route path="/conversations" element={<Conversations />} />
             <Route path="/chat/:conversationId" element={<Chat />} />
             <Route path="/users" element={<Users />} />
+            <Route path="/admin" element={<Admin />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
