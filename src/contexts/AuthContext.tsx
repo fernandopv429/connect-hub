@@ -36,14 +36,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [company, setCompany] = useState<Company | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchUserData = async (userId: string) => {
+  const fetchUserData = async (userId: string, userEmail?: string, fullName?: string) => {
     try {
       // Fetch profile
-      const { data: profileData } = await supabase
+      let { data: profileData } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .maybeSingle();
+
+      // If no profile exists, create one with a new company
+      if (!profileData && userEmail) {
+        // First create a company
+        const { data: newCompany, error: companyError } = await supabase
+          .from('companies')
+          .insert({ name: fullName ? `${fullName}'s Company` : `${userEmail.split('@')[0]}'s Company` })
+          .select()
+          .single();
+
+        if (companyError) {
+          console.error('Error creating company:', companyError);
+        }
+
+        // Then create profile with company_id
+        const { data: newProfile, error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            id: userId,
+            full_name: fullName || null,
+            company_id: newCompany?.id || null
+          })
+          .select()
+          .single();
+
+        if (profileError) {
+          console.error('Error creating profile:', profileError);
+        } else {
+          profileData = newProfile;
+        }
+      }
 
       if (profileData) {
         setProfile(profileData);
@@ -74,8 +105,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(session?.user ?? null);
 
         if (session?.user) {
+          const user = session.user;
           setTimeout(() => {
-            fetchUserData(session.user.id);
+            fetchUserData(
+              user.id, 
+              user.email, 
+              user.user_metadata?.full_name
+            );
           }, 0);
         } else {
           setProfile(null);
@@ -90,7 +126,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchUserData(session.user.id);
+        const user = session.user;
+        fetchUserData(
+          user.id,
+          user.email,
+          user.user_metadata?.full_name
+        );
       }
       setLoading(false);
     });
