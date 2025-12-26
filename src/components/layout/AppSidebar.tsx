@@ -5,10 +5,12 @@ import {
   Smartphone, 
   Users, 
   LogOut,
-  Building2
+  Building2,
+  Shield
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUserRole } from '@/hooks/useUserRole';
 import {
   Sidebar,
   SidebarContent,
@@ -31,11 +33,16 @@ const menuItems = [
   { title: 'Usuários', url: '/users', icon: Users },
 ];
 
+const adminMenuItems = [
+  { title: 'Administração', url: '/admin', icon: Shield },
+];
+
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === 'collapsed';
   const location = useLocation();
   const { signOut, company, profile } = useAuth();
+  const { isAdmin } = useUserRole();
 
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path + '/');
 
@@ -76,6 +83,24 @@ export function AppSidebar() {
                     >
                       <item.icon className="h-5 w-5 shrink-0" />
                       {!collapsed && <span>{item.title}</span>}
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+              {isAdmin && adminMenuItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton 
+                    asChild 
+                    isActive={isActive(item.url)}
+                    tooltip={item.title}
+                  >
+                    <NavLink 
+                      to={item.url} 
+                      className="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors"
+                      activeClassName="bg-sidebar-accent text-sidebar-accent-foreground"
+                    >
+                      <item.icon className="h-5 w-5 shrink-0 text-primary" />
+                      {!collapsed && <span className="text-primary font-medium">{item.title}</span>}
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
