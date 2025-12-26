@@ -71,7 +71,10 @@ export default function Instances() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const fetchInstances = async () => {
-    if (!profile?.company_id) return;
+    if (!profile?.company_id) {
+      setLoading(false);
+      return;
+    }
 
     try {
       const { data, error } = await supabase
@@ -95,8 +98,10 @@ export default function Instances() {
   };
 
   useEffect(() => {
-    fetchInstances();
-  }, [profile?.company_id]);
+    if (profile !== null) {
+      fetchInstances();
+    }
+  }, [profile]);
 
   const handleCreateInstance = async () => {
     if (!newInstanceName.trim() || !profile?.company_id) return;
@@ -336,6 +341,18 @@ export default function Instances() {
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
+        ) : !profile?.company_id ? (
+          <Card className="border-dashed border-2 border-border">
+            <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="rounded-full bg-destructive/10 p-4 mb-4">
+                <Smartphone className="h-8 w-8 text-destructive" />
+              </div>
+              <h3 className="text-lg font-semibold mb-2">Empresa não configurada</h3>
+              <p className="text-muted-foreground max-w-md">
+                Seu perfil não está associado a uma empresa. Entre em contato com o administrador.
+              </p>
+            </CardContent>
+          </Card>
         ) : instances.length === 0 ? (
           <Card className="border-dashed border-2 border-border">
             <CardContent className="flex flex-col items-center justify-center py-12 text-center">
